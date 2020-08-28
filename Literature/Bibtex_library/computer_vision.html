@@ -1,0 +1,1119 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>JabRef references</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script type="text/javascript">
+<!--
+// QuickSearch script for JabRef HTML export 
+// Version: 3.0
+//
+// Copyright (c) 2006-2011, Mark Schenk
+//
+// This software is distributed under a Creative Commons Attribution 3.0 License
+// http://creativecommons.org/licenses/by/3.0/
+//
+// Features:
+// - intuitive find-as-you-type searching
+//    ~ case insensitive
+//    ~ ignore diacritics (optional)
+//
+// - search with/without Regular Expressions
+// - match BibTeX key
+//
+
+// Search settings
+var searchAbstract = true;	// search in abstract
+var searchComment = true;	// search in comment
+
+var noSquiggles = true; 	// ignore diacritics when searching
+var searchRegExp = false; 	// enable RegExp searches
+
+
+if (window.addEventListener) {
+	window.addEventListener("load",initSearch,false); }
+else if (window.attachEvent) {
+	window.attachEvent("onload", initSearch); }
+
+function initSearch() {
+	// check for quick search table and searchfield
+	if (!document.getElementById('qs_table')||!document.getElementById('quicksearch')) { return; }
+
+	// load all the rows and sort into arrays
+	loadTableData();
+	
+	//find the query field
+	qsfield = document.getElementById('qs_field');
+
+	// previous search term; used for speed optimisation
+	prevSearch = '';
+
+	//find statistics location
+	stats = document.getElementById('stat');
+	setStatistics(-1);
+	
+	// set up preferences
+	initPreferences();
+
+	// shows the searchfield
+	document.getElementById('quicksearch').style.display = 'block';
+	document.getElementById('qs_field').onkeyup = quickSearch;
+}
+
+function loadTableData() {
+	// find table and appropriate rows
+	searchTable = document.getElementById('qs_table');
+	var allRows = searchTable.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+	// split all rows into entryRows and infoRows (e.g. abstract, comment, bibtex)
+	entryRows = new Array(); infoRows = new Array(); absRows = new Array(); revRows = new Array();
+
+	// get data from each row
+	entryRowsData = new Array(); absRowsData = new Array(); revRowsData = new Array(); 
+	
+	BibTeXKeys = new Array();
+	
+	for (var i=0, k=0, j=0; i<allRows.length;i++) {
+		if (allRows[i].className.match(/entry/)) {
+			entryRows[j] = allRows[i];
+			entryRowsData[j] = stripDiacritics(getTextContent(allRows[i]));
+			allRows[i].id ? BibTeXKeys[j] = allRows[i].id : allRows[i].id = 'autokey_'+j;
+			j ++;
+		} else {
+			infoRows[k++] = allRows[i];
+			// check for abstract/comment
+			if (allRows[i].className.match(/abstract/)) {
+				absRows.push(allRows[i]);
+				absRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			} else if (allRows[i].className.match(/comment/)) {
+				revRows.push(allRows[i]);
+				revRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			}
+		}
+	}
+	//number of entries and rows
+	numEntries = entryRows.length;
+	numInfo = infoRows.length;
+	numAbs = absRows.length;
+	numRev = revRows.length;
+}
+
+function quickSearch(){
+	
+	tInput = qsfield;
+
+	if (tInput.value.length == 0) {
+		showAll();
+		setStatistics(-1);
+		qsfield.className = '';
+		return;
+	} else {
+		t = stripDiacritics(tInput.value);
+
+		if(!searchRegExp) { t = escapeRegExp(t); }
+			
+		// only search for valid RegExp
+		try {
+			textRegExp = new RegExp(t,"i");
+			closeAllInfo();
+			qsfield.className = '';
+		}
+			catch(err) {
+			prevSearch = tInput.value;
+			qsfield.className = 'invalidsearch';
+			return;
+		}
+	}
+	
+	// count number of hits
+	var hits = 0;
+
+	// start looping through all entry rows
+	for (var i = 0; cRow = entryRows[i]; i++){
+
+		// only show search the cells if it isn't already hidden OR if the search term is getting shorter, then search all
+		if(cRow.className.indexOf('noshow')==-1 || tInput.value.length <= prevSearch.length){
+			var found = false; 
+
+			if (entryRowsData[i].search(textRegExp) != -1 || BibTeXKeys[i].search(textRegExp) != -1){ 
+				found = true;
+			} else {
+				if(searchAbstract && absRowsData[i]!=undefined) {
+					if (absRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+				if(searchComment && revRowsData[i]!=undefined) {
+					if (revRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+			}
+			
+			if (found){
+				cRow.className = 'entry show';
+				hits++;
+			} else {
+				cRow.className = 'entry noshow';
+			}
+		}
+	}
+
+	// update statistics
+	setStatistics(hits)
+	
+	// set previous search value
+	prevSearch = tInput.value;
+}
+
+
+// Strip Diacritics from text
+// http://stackoverflow.com/questions/990904/javascript-remove-accents-in-strings
+
+// String containing replacement characters for stripping accents 
+var stripstring = 
+    'AAAAAAACEEEEIIII'+
+    'DNOOOOO.OUUUUY..'+
+    'aaaaaaaceeeeiiii'+
+    'dnooooo.ouuuuy.y'+
+    'AaAaAaCcCcCcCcDd'+
+    'DdEeEeEeEeEeGgGg'+
+    'GgGgHhHhIiIiIiIi'+
+    'IiIiJjKkkLlLlLlL'+
+    'lJlNnNnNnnNnOoOo'+
+    'OoOoRrRrRrSsSsSs'+
+    'SsTtTtTtUuUuUuUu'+
+    'UuUuWwYyYZzZzZz.';
+
+function stripDiacritics(str){
+
+    if(noSquiggles==false){
+        return str;
+    }
+
+    var answer='';
+    for(var i=0;i<str.length;i++){
+        var ch=str[i];
+        var chindex=ch.charCodeAt(0)-192;   // Index of character code in the strip string
+        if(chindex>=0 && chindex<stripstring.length){
+            // Character is within our table, so we can strip the accent...
+            var outch=stripstring.charAt(chindex);
+            // ...unless it was shown as a '.'
+            if(outch!='.')ch=outch;
+        }
+        answer+=ch;
+    }
+    return answer;
+}
+
+// http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+// NOTE: must escape every \ in the export code because of the JabRef Export...
+function escapeRegExp(str) {
+  return str.replace(/[-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function toggleInfo(articleid,info) {
+
+	var entry = document.getElementById(articleid);
+	var abs = document.getElementById('abs_'+articleid);
+	var rev = document.getElementById('rev_'+articleid);
+	var bib = document.getElementById('bib_'+articleid);
+	
+	if (abs && info == 'abstract') {
+		abs.className.indexOf('noshow') == -1?abs.className = 'abstract noshow':abs.className = 'abstract show';
+	} else if (rev && info == 'comment') {
+		rev.className.indexOf('noshow') == -1?rev.className = 'comment noshow':rev.className = 'comment show';
+	} else if (bib && info == 'bibtex') {
+		bib.className.indexOf('noshow') == -1?bib.className = 'bibtex noshow':bib.className = 'bibtex show';
+	} else { 
+		return;
+	}
+
+	// check if one or the other is available
+	var revshow; var absshow; var bibshow;
+	(abs && abs.className.indexOf('noshow') == -1)? absshow = true: absshow = false;
+	(rev && rev.className.indexOf('noshow') == -1)? revshow = true: revshow = false;	
+	(bib && bib.className.indexOf('noshow') == -1)? bibshow = true: bibshow = false;
+	
+	// highlight original entry
+	if(entry) {
+		if (revshow || absshow || bibshow) {
+		entry.className = 'entry highlight show';
+		} else {
+		entry.className = 'entry show';
+		}
+	}
+	
+	// When there's a combination of abstract/comment/bibtex showing, need to add class for correct styling
+	if(absshow) {
+		(revshow||bibshow)?abs.className = 'abstract nextshow':abs.className = 'abstract';
+	} 
+	if (revshow) {
+		bibshow?rev.className = 'comment nextshow': rev.className = 'comment';
+	}	
+	
+}
+
+function setStatistics (hits) {
+	if(hits < 0) { hits=numEntries; }
+	if(stats) { stats.firstChild.data = hits + '/' + numEntries}
+}
+
+function getTextContent(node) {
+	// Function written by Arve Bersvendsen
+	// http://www.virtuelvis.com
+	
+	if (node.nodeType == 3) {
+	return node.nodeValue;
+	} // text node
+	if (node.nodeType == 1 && node.className != "infolinks") { // element node
+	var text = [];
+	for (var chld = node.firstChild;chld;chld=chld.nextSibling) {
+		text.push(getTextContent(chld));
+	}
+	return text.join("");
+	} return ""; // some other node, won't contain text nodes.
+}
+
+function showAll(){
+	closeAllInfo();
+	for (var i = 0; i < numEntries; i++){ entryRows[i].className = 'entry show'; }
+}
+
+function closeAllInfo(){
+	for (var i=0; i < numInfo; i++){
+		if (infoRows[i].className.indexOf('noshow') ==-1) {
+			infoRows[i].className = infoRows[i].className + ' noshow';
+		}
+	}
+}
+
+function clearQS() {
+	qsfield.value = '';
+	showAll();
+}
+
+function redoQS(){
+	showAll();
+	quickSearch(qsfield);
+}
+
+function updateSetting(obj){
+	var option = obj.id;
+	var checked = obj.value;
+
+	switch(option)
+	 {
+	 case "opt_searchAbs":
+	   searchAbstract=!searchAbstract;
+	   redoQS();
+	   break;
+	 case "opt_searchRev":
+	   searchComment=!searchComment;
+	   redoQS();
+	   break;
+	 case "opt_useRegExp":
+	   searchRegExp=!searchRegExp;
+	   redoQS();
+	   break;
+	 case "opt_noAccents":
+	   noSquiggles=!noSquiggles;
+	   loadTableData();
+	   redoQS();
+	   break;
+	 }
+}
+
+function initPreferences(){
+	if(searchAbstract){document.getElementById("opt_searchAbs").checked = true;}
+	if(searchComment){document.getElementById("opt_searchRev").checked = true;}
+	if(noSquiggles){document.getElementById("opt_noAccents").checked = true;}
+	if(searchRegExp){document.getElementById("opt_useRegExp").checked = true;}
+	
+	if(numAbs==0) {document.getElementById("opt_searchAbs").parentNode.style.display = 'none';}
+	if(numRev==0) {document.getElementById("opt_searchRev").parentNode.style.display = 'none';}
+}
+
+function toggleSettings(){
+	var togglebutton = document.getElementById('showsettings');
+	var settings = document.getElementById('settings');
+	
+	if(settings.className == "hidden"){
+		settings.className = "show";
+		togglebutton.innerText = "close settings";
+		togglebutton.textContent = "close settings";
+	}else{
+		settings.className = "hidden";
+		togglebutton.innerText = "settings...";		
+		togglebutton.textContent = "settings...";
+	}
+}
+
+-->
+</script>
+<style type="text/css">
+body { background-color: white; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.2; padding: 1em; color: #2E2E2E; margin: auto 2em; }
+
+form#quicksearch { width: auto; border-style: solid; border-color: gray; border-width: 1px 0px; padding: 0.7em 0.5em; display:none; position:relative; }
+span#searchstat {padding-left: 1em;}
+
+div#settings { margin-top:0.7em; /* border-bottom: 1px transparent solid; background-color: #efefef; border: 1px grey solid; */ }
+div#settings ul {margin: 0; padding: 0; }
+div#settings li {margin: 0; padding: 0 1em 0 0; display: inline; list-style: none; }
+div#settings li + li { border-left: 2px #efefef solid; padding-left: 0.5em;}
+div#settings input { margin-bottom: 0px;}
+
+div#settings.hidden {display:none;}
+
+#showsettings { border: 1px grey solid; padding: 0 0.5em; float:right; line-height: 1.6em; text-align: right; }
+#showsettings:hover { cursor: pointer; }
+
+.invalidsearch { background-color: red; }
+input[type="button"] { background-color: #efefef; border: 1px #2E2E2E solid;}
+
+table { width: 100%; empty-cells: show; border-spacing: 0em 0.2em; margin: 1em 0em; border-style: none; }
+th, td { border: 1px gray solid; border-width: 1px 1px; padding: 0.5em; vertical-align: top; text-align: left; }
+th { background-color: #efefef; }
+td + td, th + th { border-left: none; }
+
+td a { color: navy; text-decoration: none; }
+td a:hover  { text-decoration: underline; }
+
+tr.noshow { display: none;}
+tr.highlight td { background-color: #EFEFEF; border-top: 2px #2E2E2E solid; font-weight: bold; }
+tr.abstract td, tr.comment td, tr.bibtex td { background-color: #EFEFEF; text-align: justify; border-bottom: 2px #2E2E2E solid; }
+tr.nextshow td { border-bottom: 1px gray solid; }
+
+tr.bibtex pre { width: 100%; overflow: auto; white-space: pre-wrap;}
+p.infolinks { margin: 0.3em 0em 0em 0em; padding: 0px; }
+
+@media print {
+	p.infolinks, #qs_settings, #quicksearch, t.bibtex { display: none !important; }
+	tr { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<form action="" id="quicksearch">
+<input type="text" id="qs_field" autocomplete="off" placeholder="Type to search..." /> <input type="button" onclick="clearQS()" value="clear" />
+<span id="searchstat">Matching entries: <span id="stat">0</span></span>
+<div id="showsettings" onclick="toggleSettings()">settings...</div>
+<div id="settings" class="hidden">
+<ul>
+<li><input type="checkbox" class="search_setting" id="opt_searchAbs" onchange="updateSetting(this)"><label for="opt_searchAbs"> include abstract</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_searchRev" onchange="updateSetting(this)"><label for="opt_searchRev"> include comment</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_useRegExp" onchange="updateSetting(this)"><label for="opt_useRegExp"> use RegExp</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_noAccents" onchange="updateSetting(this)"><label for="opt_noAccents"> ignore accents</label></li>
+</ul>
+</div>
+</form>
+<table id="qs_table" border="1">
+<thead><tr><th width="20%">Author</th><th width="30%">Title</th><th width="5%">Year</th><th width="30%">Journal/Proceedings</th><th width="10%">Reftype</th><th width="5%">DOI/URL</th></tr></thead>
+<tbody><tr id="andriluka2009pictorial" class="entry">
+	<td>Andriluka, M., Roth, S. and Schiele, B.</td>
+	<td>Pictorial structures revisited: People detection and articulated pose estimation <p class="infolinks">[<a href="javascript:toggleInfo('andriluka2009pictorial','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('andriluka2009pictorial','comment')">Comment</a>] [<a href="javascript:toggleInfo('andriluka2009pictorial','bibtex')">BibTeX</a>]</p></td>
+	<td>2009</td>
+	<td>2009 IEEE conference on computer vision and pattern recognition, pp. 1014-1021&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.717.3215&rep=rep1&type=pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_andriluka2009pictorial" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Non-rigid object detection and articulated pose estimation are two related and challenging problems in computer vision. Numerous models have been proposed over the years and often address different special cases, such as pedestrian detection or upper body pose estimation in TV footage. This paper shows that such specialization may not be necessary, and proposes a generic approach based on the pictorial structures framework. We show that the right selection of components for both appearance and spatial modeling is crucial for general applicability and overall performance of the model. The appearance of body parts is modeled using densely sampled shape context descriptors and discriminatively trained AdaBoost classifiers. Furthermore, we interpret the normalized margin of each classifier as likelihood in a generative model. Non-Gaussian relationships between parts are represented as Gaussians in the coordinate system of the joint between parts. The marginal posterior of each part is inferred using belief propagation. We demonstrate that such a model is equally suitable for both detection and pose estimation tasks, outperforming the state of the art on three recently proposed datasets.</td>
+</tr>
+<tr id="rev_andriluka2009pictorial" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Pictorial structures. CItations - 900</td>
+</tr>
+<tr id="bib_andriluka2009pictorial" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{andriluka2009pictorial,
+  author = {Andriluka, Mykhaylo and Roth, Stefan and Schiele, Bernt},
+  title = {Pictorial structures revisited: People detection and articulated pose estimation},
+  booktitle = {2009 IEEE conference on computer vision and pattern recognition},
+  year = {2009},
+  pages = {1014--1021},
+  url = {http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.717.3215&amp;rep=rep1&amp;type=pdf}
+}
+</pre></td>
+</tr>
+<tr id="antol2015vqa" class="entry">
+	<td>Antol, S., Agrawal, A., Lu, J., Mitchell, M., Batra, D., Lawrence Zitnick, C. and Parikh, D.</td>
+	<td>Vqa: Visual question answering <p class="infolinks">[<a href="javascript:toggleInfo('antol2015vqa','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('antol2015vqa','comment')">Comment</a>] [<a href="javascript:toggleInfo('antol2015vqa','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Proceedings of the IEEE international conference on computer vision, pp. 2425-2433&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://openaccess.thecvf.com/content_iccv_2015/papers/Antol_VQA_Visual_Question_ICCV_2015_paper.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_antol2015vqa" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We propose the task of free-form and open-ended Visual Question Answering (VQA). Given an image and a natural language question about the image, the task is to provide an accurate natural language answer. Mirroring real-world scenarios, such as helping the visually impaired, both the questions and answers are open-ended. Visual questions selectively target different areas of an image, including background details and underlying context. As a result, a system that succeeds at VQA typically needs a more detailed understanding of the image and complex reasoning than a system producing generic image captions. Moreover, VQA is amenable to automatic evaluation, since many open-ended answers contain only a few words or a closed set of answers that can be provided in a multiple-choice format. We provide a dataset containing ∼0.25M images, ∼0.76M questions, and ∼10M answers (www.visualqa.org), and discuss the information it provides. Numerous baselines for VQA are provided and compared with human performance.</td>
+</tr>
+<tr id="rev_antol2015vqa" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: VQA dataset. Citations - 2048</td>
+</tr>
+<tr id="bib_antol2015vqa" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{antol2015vqa,
+  author = {Antol, Stanislaw and Agrawal, Aishwarya and Lu, Jiasen and Mitchell, Margaret and Batra, Dhruv and Lawrence Zitnick, C and Parikh, Devi},
+  title = {Vqa: Visual question answering},
+  booktitle = {Proceedings of the IEEE international conference on computer vision},
+  year = {2015},
+  pages = {2425--2433},
+  url = {http://openaccess.thecvf.com/content_iccv_2015/papers/Antol_VQA_Visual_Question_ICCV_2015_paper.pdf}
+}
+</pre></td>
+</tr>
+<tr id="badrinarayanan2017segnet" class="entry">
+	<td>Badrinarayanan, V., Kendall, A. and Cipolla, R.</td>
+	<td>Segnet: A deep convolutional encoder-decoder architecture for image segmentation <p class="infolinks">[<a href="javascript:toggleInfo('badrinarayanan2017segnet','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('badrinarayanan2017segnet','comment')">Comment</a>] [<a href="javascript:toggleInfo('badrinarayanan2017segnet','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>IEEE transactions on pattern analysis and machine intelligence<br/>Vol. 39(12), pp. 2481-2495&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://ieeexplore.ieee.org/iel7/34/4359286/07803544.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_badrinarayanan2017segnet" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a novel and practical deep fully convolutional neural network architecture for semantic pixel-wise segmentation termed SegNet. This core trainable segmentation engine consists of an encoder network, a corresponding decoder network followed by a pixel-wise classification layer. The architecture of the encoder network is topologically identical to the 13 convolutional layers in the VGG16 network [1] . The role of the decoder network is to map the low resolution encoder feature maps to full input resolution feature maps for pixel-wise classification. The novelty of SegNet lies is in the manner in which the decoder upsamples its lower resolution input feature map(s). Specifically, the decoder uses pooling indices computed in the max-pooling step of the corresponding encoder to perform non-linear upsampling. This eliminates the need for learning to upsample. The upsampled maps are sparse and are then convolved with trainable filters to produce dense feature maps. We compare our proposed architecture with the widely adopted FCN [2] and also with the well known DeepLab-LargeFOV [3] , DeconvNet [4] architectures. This comparison reveals the memory versus accuracy trade-off involved in achieving good segmentation performance. SegNet was primarily motivated by scene understanding applications. Hence, it is designed to be efficient both in terms of memory and computational time during inference. It is also significantly smaller in the number of trainable parameters than other competing architectures and can be trained end-to-end using stochastic gradient descent. We also performed a controlled benchmark of SegNet and other architectures on both road scenes and SUN RGB-D indoor scene segmentation tasks. These quantitative assessments show that SegNet provides good performance with competitive inference time and most efficient inference memory-wise as compared to other architectures. We also provide a Caffe implementation of SegNet and a web demo at http://mi.eng.cam.ac.uk/projects/segnet/.</td>
+</tr>
+<tr id="rev_badrinarayanan2017segnet" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: SegNet. CItations - 5459</td>
+</tr>
+<tr id="bib_badrinarayanan2017segnet" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{badrinarayanan2017segnet,
+  author = {Badrinarayanan, Vijay and Kendall, Alex and Cipolla, Roberto},
+  title = {Segnet: A deep convolutional encoder-decoder architecture for image segmentation},
+  journal = {IEEE transactions on pattern analysis and machine intelligence},
+  publisher = {IEEE},
+  year = {2017},
+  volume = {39},
+  number = {12},
+  pages = {2481--2495},
+  url = {https://ieeexplore.ieee.org/iel7/34/4359286/07803544.pdf}
+}
+</pre></td>
+</tr>
+<tr id="chen2014semantic" class="entry">
+	<td>Chen, L.-C., Papandreou, G., Kokkinos, I., Murphy, K. and Yuille, A.L.</td>
+	<td>Semantic image segmentation with deep convolutional nets and fully connected crfs <p class="infolinks">[<a href="javascript:toggleInfo('chen2014semantic','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('chen2014semantic','comment')">Comment</a>] [<a href="javascript:toggleInfo('chen2014semantic','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>arXiv preprint arXiv:1412.7062&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://arxiv.org/pdf/1412.7062">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_chen2014semantic" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Deep Convolutional Neural Networks (DCNNs) have recently shown state of the art performance in high level vision tasks, such as image classification and object detection. This work brings together methods from DCNNs and probabilistic graphical models for addressing the task of pixel-level classification (also called ”semantic image segmentation”). We show that responses at the final layer of DCNNs are not sufficiently localized for accurate object segmentation. This is due to the very invariance properties that make DCNNs good for high level tasks. We overcome this poor localization property of deep networks by combining the responses at the final DCNN layer with a fully connected Conditional Random Field (CRF). Qualitatively, our “DeepLab” system is able to localize segment boundaries at a level of accuracy which is beyond previous methods. Quantitatively, our method sets the new state-of-art at the PASCAL VOC-2012 semantic image segmentation task, reaching 71.6% IOU accuracy in the test set. We show how these results can be obtained efficiently: Careful network re-purposing and a novel application of the ’hole’ algorithm from the wavelet community allow dense computation of neural net responses at 8 frames per second on a modern GPU.</td>
+</tr>
+<tr id="rev_chen2014semantic" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Fully connected network for segmentation. Citations - 2621</td>
+</tr>
+<tr id="bib_chen2014semantic" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{chen2014semantic,
+  author = {Chen, Liang-Chieh and Papandreou, George and Kokkinos, Iasonas and Murphy, Kevin and Yuille, Alan L},
+  title = {Semantic image segmentation with deep convolutional nets and fully connected crfs},
+  journal = {arXiv preprint arXiv:1412.7062},
+  year = {2014},
+  url = {https://arxiv.org/pdf/1412.7062}
+}
+</pre></td>
+</tr>
+<tr id="chen2017deeplab" class="entry">
+	<td>Chen, L.-C., Papandreou, G., Kokkinos, I., Murphy, K. and Yuille, A.L.</td>
+	<td>Deeplab: Semantic image segmentation with deep convolutional nets, atrous convolution, and fully connected crfs <p class="infolinks">[<a href="javascript:toggleInfo('chen2017deeplab','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('chen2017deeplab','comment')">Comment</a>] [<a href="javascript:toggleInfo('chen2017deeplab','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>IEEE transactions on pattern analysis and machine intelligence<br/>Vol. 40(4), pp. 834-848&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://arxiv.org/pdf/1606.00915">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_chen2017deeplab" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In this work we address the task of semantic image segmentation with Deep Learning and make three main contributions that are experimentally shown to have substantial practical merit. First, we highlight convolution with upsampled filters, or `atrous convolution', as a powerful tool in dense prediction tasks. Atrous convolution allows us to explicitly control the resolution at which feature responses are computed within Deep Convolutional Neural Networks. It also allows us to effectively enlarge the field of view of filters to incorporate larger context without increasing the number of parameters or the amount of computation. Second, we propose atrous spatial pyramid pooling (ASPP) to robustly segment objects at multiple scales. ASPP probes an incoming convolutional feature layer with filters at multiple sampling rates and effective fields-of-views, thus capturing objects as well as image context at multiple scales. Third, we improve the localization of object boundaries by combining methods from DCNNs and probabilistic graphical models. The commonly deployed combination of max-pooling and downsampling in DCNNs achieves invariance but has a toll on localization accuracy. We overcome this by combining the responses at the final DCNN layer with a fully connected Conditional Random Field (CRF), which is shown both qualitatively and quantitatively to improve localization performance. Our proposed “DeepLab” system sets the new state-of-art at the PASCAL VOC-2012 semantic image segmentation task, reaching 79.7 percent mIOU in the test set, and advances the results on three other datasets: PASCAL-Context, PASCAL-Person-Part, and Cityscapes. All of our code is made publicly available online.</td>
+</tr>
+<tr id="rev_chen2017deeplab" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Semantic image segementation. Citations - 5527</td>
+</tr>
+<tr id="bib_chen2017deeplab" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{chen2017deeplab,
+  author = {Chen, Liang-Chieh and Papandreou, George and Kokkinos, Iasonas and Murphy, Kevin and Yuille, Alan L},
+  title = {Deeplab: Semantic image segmentation with deep convolutional nets, atrous convolution, and fully connected crfs},
+  journal = {IEEE transactions on pattern analysis and machine intelligence},
+  publisher = {IEEE},
+  year = {2017},
+  volume = {40},
+  number = {4},
+  pages = {834--848},
+  url = {https://arxiv.org/pdf/1606.00915}
+}
+</pre></td>
+</tr>
+<tr id="cordts2016cityscapes" class="entry">
+	<td>Cordts, M., Omran, M., Ramos, S., Rehfeld, T., Enzweiler, M., Benenson, R., Franke, U., Roth, S. and Schiele, B.</td>
+	<td>The cityscapes dataset for semantic urban scene understanding <p class="infolinks">[<a href="javascript:toggleInfo('cordts2016cityscapes','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('cordts2016cityscapes','comment')">Comment</a>] [<a href="javascript:toggleInfo('cordts2016cityscapes','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 3213-3223&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://openaccess.thecvf.com/content_cvpr_2016/papers/Cordts_The_Cityscapes_Dataset_CVPR_2016_paper.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_cordts2016cityscapes" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Visual understanding of complex urban street scenes is an enabling factor for a wide range of applications. Object detection has benefited enormously from large-scale datasets, especially in the context of deep learning. For semantic urban scene understanding, however, no current dataset adequately captures the complexity of real-world urban scenes. To address this, we introduce Cityscapes, a benchmark suite and large-scale dataset to train and test approaches for pixel-level and instance-level semantic labeling. Cityscapes is comprised of a large, diverse set of stereo video sequences recorded in streets from 50 different cities. 5000 of these images have high quality pixel-level annotations; 20 000 additional images have coarse annotations to enable methods that leverage large volumes of weakly-labeled data. Crucially, our effort exceeds previous attempts in terms of dataset size, annotation richness, scene variability, and complexity. Our accompanying empirical study provides an in-depth analysis of the dataset characteristics, as well as a performance evaluation of several state-of-the-art approaches based on our benchmark</td>
+</tr>
+<tr id="rev_cordts2016cityscapes" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Cityscapes dataset. CItations - 3405</td>
+</tr>
+<tr id="bib_cordts2016cityscapes" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{cordts2016cityscapes,
+  author = {Cordts, Marius and Omran, Mohamed and Ramos, Sebastian and Rehfeld, Timo and Enzweiler, Markus and Benenson, Rodrigo and Franke, Uwe and Roth, Stefan and Schiele, Bernt},
+  title = {The cityscapes dataset for semantic urban scene understanding},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  year = {2016},
+  pages = {3213--3223},
+  url = {http://openaccess.thecvf.com/content_cvpr_2016/papers/Cordts_The_Cityscapes_Dataset_CVPR_2016_paper.pdf}
+}
+</pre></td>
+</tr>
+<tr id="deng2009imagenet" class="entry">
+	<td>Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K. and Fei-Fei, L.</td>
+	<td>Imagenet: A large-scale hierarchical image database <p class="infolinks">[<a href="javascript:toggleInfo('deng2009imagenet','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('deng2009imagenet','comment')">Comment</a>] [<a href="javascript:toggleInfo('deng2009imagenet','bibtex')">BibTeX</a>]</p></td>
+	<td>2009</td>
+	<td>2009 IEEE conference on computer vision and pattern recognition, pp. 248-255&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://www.researchgate.net/profile/Li_Jia_Li/publication/221361415_ImageNet_a_Large-Scale_Hierarchical_Image_Database/links/00b495388120dbc339000000/ImageNet-a-Large-Scale-Hierarchical-Image-Database.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_deng2009imagenet" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The explosion of image data on the Internet has the potential to foster more sophisticated and robust models and algorithms to index, retrieve, organize and interact with images and multimedia data. But exactly how such data can be harnessed and organized remains a critical problem. We introduce here a new database called “ImageNet”, a largescale ontology of images built upon the backbone of the WordNet structure. ImageNet aims to populate the majority of the 80,000 synsets of WordNet with an average of 500- 1000 clean and full resolution images. This will result in tens of millions of annotated images organized by the semantic hierarchy of WordNet. This paper offers a detailed analysis of ImageNet in its current state: 12 subtrees with 5247 synsets and 3.2 million images in total. We show that ImageNet is much larger in scale and diversity and much more accurate than the current image datasets. Constructing such a large-scale database is a challenging task. We describe the data collection scheme with Amazon Mechanical Turk. Lastly, we illustrate the usefulness of ImageNet through three simple applications in object recognition, image classification and automatic object clustering. We hope that the scale, accuracy, diversity and hierarchical structure of ImageNet can offer unparalleled opportunities to researchers in the computer vision community and beyond.</td>
+</tr>
+<tr id="rev_deng2009imagenet" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Imagenet. Citations - 20648</td>
+</tr>
+<tr id="bib_deng2009imagenet" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{deng2009imagenet,
+  author = {Deng, Jia and Dong, Wei and Socher, Richard and Li, Li-Jia and Li, Kai and Fei-Fei, Li},
+  title = {Imagenet: A large-scale hierarchical image database},
+  booktitle = {2009 IEEE conference on computer vision and pattern recognition},
+  year = {2009},
+  pages = {248--255},
+  url = {https://www.researchgate.net/profile/Li_Jia_Li/publication/221361415_ImageNet_a_Large-Scale_Hierarchical_Image_Database/links/00b495388120dbc339000000/ImageNet-a-Large-Scale-Hierarchical-Image-Database.pdf}
+}
+</pre></td>
+</tr>
+<tr id="edelman1997computational" class="entry">
+	<td>Edelman, S.</td>
+	<td>Computational theories of object recognition <p class="infolinks">[<a href="javascript:toggleInfo('edelman1997computational','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('edelman1997computational','comment')">Comment</a>] [<a href="javascript:toggleInfo('edelman1997computational','bibtex')">BibTeX</a>]</p></td>
+	<td>1997</td>
+	<td>Trends in cognitive sciences<br/>Vol. 1(8), pp. 296-304&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://cogprints.org/560/2/199710002.ps">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_edelman1997computational" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: This paper examines four current theoretical approaches to the representation and recognition of visual objects: structural descriptions, geometric constraints, multidimensional feature spaces and shape-space approximation. The strengths and weaknesses of the four theories are considered, with a special focus on their approach to categorization—a computationally challenging task which is not widely addressed in computer vision, where the stress is rather on the generalization of recognition across changes of viewpoint.</td>
+</tr>
+<tr id="rev_edelman1997computational" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Object recognition. Citation - 194</td>
+</tr>
+<tr id="bib_edelman1997computational" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{edelman1997computational,
+  author = {Edelman, Shimon},
+  title = {Computational theories of object recognition},
+  journal = {Trends in cognitive sciences},
+  publisher = {Elsevier},
+  year = {1997},
+  volume = {1},
+  number = {8},
+  pages = {296--304},
+  url = {http://cogprints.org/560/2/199710002.ps}
+}
+</pre></td>
+</tr>
+<tr id="felzenszwalb2009object" class="entry">
+	<td>Felzenszwalb, P.F., Girshick, R.B., McAllester, D. and Ramanan, D.</td>
+	<td>Object detection with discriminatively trained part-based models <p class="infolinks">[<a href="javascript:toggleInfo('felzenszwalb2009object','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('felzenszwalb2009object','comment')">Comment</a>] [<a href="javascript:toggleInfo('felzenszwalb2009object','bibtex')">BibTeX</a>]</p></td>
+	<td>2009</td>
+	<td>IEEE transactions on pattern analysis and machine intelligence<br/>Vol. 32(9), pp. 1627-1645&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://lear.inrialpes.fr/~oneata/reading_group/dpm.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_felzenszwalb2009object" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We describe an object detection system based on mixtures of multiscale deformable part models. Our system is able to represent highly variable object classes and achieves state-of-the-art results in the PASCAL object detection challenges. While deformable part models have become quite popular, their value had not been demonstrated on difficult benchmarks such as the PASCAL data sets. Our system relies on new methods for discriminative training with partially labeled data. We combine a margin-sensitive approach for data-mining hard negative examples with a formalism we call latent SVM. A latent SVM is a reformulation of MI--SVM in terms of latent variables. A latent SVM is semiconvex, and the training problem becomes convex once latent information is specified for the positive examples. This leads to an iterative training algorithm that alternates between fixing latent values for positive examples and optimizing the latent SVM objective function.</td>
+</tr>
+<tr id="rev_felzenszwalb2009object" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Object Detection with Discriminatively Trained Part Based Model. Citations - 9521</td>
+</tr>
+<tr id="bib_felzenszwalb2009object" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{felzenszwalb2009object,
+  author = {Felzenszwalb, Pedro F and Girshick, Ross B and McAllester, David and Ramanan, Deva},
+  title = {Object detection with discriminatively trained part-based models},
+  journal = {IEEE transactions on pattern analysis and machine intelligence},
+  publisher = {IEEE},
+  year = {2009},
+  volume = {32},
+  number = {9},
+  pages = {1627--1645},
+  url = {http://lear.inrialpes.fr/&nbsp;oneata/reading_group/dpm.pdf}
+}
+</pre></td>
+</tr>
+<tr id="fergus2003object" class="entry">
+	<td>Fergus, R., Perona, P. and Zisserman, A.</td>
+	<td>Object class recognition by unsupervised scale-invariant learning <p class="infolinks">[<a href="javascript:toggleInfo('fergus2003object','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('fergus2003object','comment')">Comment</a>] [<a href="javascript:toggleInfo('fergus2003object','bibtex')">BibTeX</a>]</p></td>
+	<td>2003</td>
+	<td><br/>Vol. 22003 IEEE Computer Society Conference on Computer Vision and Pattern Recognition, 2003. Proceedings., pp. II-II&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://host.robots.ox.ac.uk/pascal/VOC/pubs/fergus03.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_fergus2003object" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a method to learn and recognize object class models from unlabeled and unsegmented cluttered scenes in a scale invariant manner. Objects are modeled as flexible constellations of parts. A probabilistic representation is used for all aspects of the object: shape, appearance, occlusion and relative scale. An entropy-based feature detector is used to select regions and their scale within the image. In learning the parameters of the scale-invariant object model are estimated. This is done using expectation-maximization in a maximum-likelihood setting. In recognition, this model is used in a Bayesian manner to classify images. The flexible nature of the model is demonstrated by excellent results over a range of datasets including geometrically constrained classes (e.g. faces, cars) and flexible objects (such as animals).</td>
+</tr>
+<tr id="rev_fergus2003object" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Object class recognition. Citation - 2810</td>
+</tr>
+<tr id="bib_fergus2003object" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{fergus2003object,
+  author = {Fergus, Robert and Perona, Pietro and Zisserman, Andrew},
+  title = {Object class recognition by unsupervised scale-invariant learning},
+  booktitle = {2003 IEEE Computer Society Conference on Computer Vision and Pattern Recognition, 2003. Proceedings.},
+  year = {2003},
+  volume = {2},
+  pages = {II--II},
+  url = {http://host.robots.ox.ac.uk/pascal/VOC/pubs/fergus03.pdf}
+}
+</pre></td>
+</tr>
+<tr id="goyal2017something" class="entry">
+	<td>Goyal, R., Kahou, S.E., Michalski, V., Materzynska, J., Westphal, S., Kim, H., Haenel, V., Fruend, I., Yianilos, P., Mueller-Freitag, M. and others</td>
+	<td>The" Something Something" Video Database for Learning and Evaluating Visual Common Sense. <p class="infolinks">[<a href="javascript:toggleInfo('goyal2017something','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('goyal2017something','comment')">Comment</a>] [<a href="javascript:toggleInfo('goyal2017something','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td><br/>Vol. 1(4)ICCV, pp. 5&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://openaccess.thecvf.com/content_ICCV_2017/papers/Goyal_The_Something_Something_ICCV_2017_paper.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_goyal2017something" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Neural networks trained on datasets such as ImageNet have led to major advances in visual object classification. One obstacle that prevents networks from reasoning more deeply about complex scenes and situations, and from integrating visual knowledge with natural language, like humans do, is their lack of common sense knowledge about the physical world. Videos, unlike still images, contain a wealth of detailed information about the physical world. However, most labelled video datasets represent high-level concepts rather than detailed physical aspects about actions and scenes. In this work, we describe our ongoing collection of the “something-something” database of video prediction tasks whose solutions require a common sense understanding of the depicted situation. The database currently contains more than 100,000 videos across 174 classes, which are defined as caption-templates. We also describe the challenges in crowd-sourcing this data at scale.</td>
+</tr>
+<tr id="rev_goyal2017something" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: VCR dataset. Citations - 191</td>
+</tr>
+<tr id="bib_goyal2017something" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{goyal2017something,
+  author = {Goyal, Raghav and Kahou, Samira Ebrahimi and Michalski, Vincent and Materzynska, Joanna and Westphal, Susanne and Kim, Heuna and Haenel, Valentin and Fruend, Ingo and Yianilos, Peter and Mueller-Freitag, Moritz and others},
+  title = {The" Something Something" Video Database for Learning and Evaluating Visual Common Sense.},
+  booktitle = {ICCV},
+  year = {2017},
+  volume = {1},
+  number = {4},
+  pages = {5},
+  url = {http://openaccess.thecvf.com/content_ICCV_2017/papers/Goyal_The_Something_Something_ICCV_2017_paper.pdf}
+}
+</pre></td>
+</tr>
+<tr id="jones2003fast" class="entry">
+	<td>Jones, M. and Viola, P.</td>
+	<td>Fast multi-view face detection <p class="infolinks">[<a href="javascript:toggleInfo('jones2003fast','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('jones2003fast','comment')">Comment</a>] [<a href="javascript:toggleInfo('jones2003fast','bibtex')">BibTeX</a>]</p></td>
+	<td>2003</td>
+	<td>Mitsubishi Electric Research Lab TR-20003-96<br/>Vol. 3(14), pp. 2&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://www.researchgate.net/profile/Michael_Jones20/publication/228362107_Fast_multi-view_face_detection/links/0fcfd50d35f8570d70000000.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_jones2003fast" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: This paper extends the face detection framework proposed by Viola and Jones 2001 to handle profile views and rotated faces. As in the work of Rowley et al 1998. and Schneiderman et al. 2000, we build different detectors for different views of the face. A decision tree is then trained to determine the viewpoint class (such as right profile or<br>rotated 60 degrees) for a given window of the image being examined. This is similar to the approach of Rowley et al. 1998. The appropriate detector for that viewpoint can then be run instead of running all detectors on all windows. This technique yields good<br>results and maintains the speed advantage of the Viola-Jones detector.</td>
+</tr>
+<tr id="rev_jones2003fast" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Viola Jones face detection. CItation - 1015</td>
+</tr>
+<tr id="bib_jones2003fast" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{jones2003fast,
+  author = {Jones, Michael and Viola, Paul},
+  title = {Fast multi-view face detection},
+  journal = {Mitsubishi Electric Research Lab TR-20003-96},
+  year = {2003},
+  volume = {3},
+  number = {14},
+  pages = {2},
+  url = {https://www.researchgate.net/profile/Michael_Jones20/publication/228362107_Fast_multi-view_face_detection/links/0fcfd50d35f8570d70000000.pdf}
+}
+</pre></td>
+</tr>
+<tr id="kirillov2019panoptic" class="entry">
+	<td>Kirillov, A., He, K., Girshick, R., Rother, C. and Doll&aacute;r, P.</td>
+	<td>Panoptic segmentation <p class="infolinks">[<a href="javascript:toggleInfo('kirillov2019panoptic','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('kirillov2019panoptic','comment')">Comment</a>] [<a href="javascript:toggleInfo('kirillov2019panoptic','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 9404-9413&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://openaccess.thecvf.com/content_CVPR_2019/papers/Kirillov_Panoptic_Segmentation_CVPR_2019_paper.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_kirillov2019panoptic" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We propose and study a task we name panoptic segmentation (PS). Panoptic segmentation unifies the typically distinct tasks of semantic segmentation (assign a class label to each pixel) and instance segmentation (detect and segment each object instance). The proposed task requires generating a coherent scene segmentation that is rich and complete, an important step toward real-world vision systems. While early work in computer vision addressed related image/scene parsing tasks, these are not currently<br>popular, possibly due to lack of appropriate metrics or associated recognition challenges. To address this, we propose a novel panoptic quality (PQ) metric that captures performance for all classes (stuff and things) in an interpretable and unified manner. Using the proposed metric, we perform a rigorous study of both human and machine performance for PS on three existing datasets, revealing interesting insights about the task. The aim of our work is to revive the interest of the community in a more unified<br>view of image segmentation. For more analysis and up-todate results, please check the arXiv version of the paper: https://arxiv.org/abs/1801.00868.</td>
+</tr>
+<tr id="rev_kirillov2019panoptic" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Panoptic segmentation. CItations - 199</td>
+</tr>
+<tr id="bib_kirillov2019panoptic" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{kirillov2019panoptic,
+  author = {Kirillov, Alexander and He, Kaiming and Girshick, Ross and Rother, Carsten and Doll&aacute;r, Piotr},
+  title = {Panoptic segmentation},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  year = {2019},
+  pages = {9404--9413},
+  url = {http://openaccess.thecvf.com/content_CVPR_2019/papers/Kirillov_Panoptic_Segmentation_CVPR_2019_paper.pdf}
+}
+</pre></td>
+</tr>
+<tr id="krishna2017visual" class="entry">
+	<td>Krishna, R., Zhu, Y., Groth, O., Johnson, J., Hata, K., Kravitz, J., Chen, S., Kalantidis, Y., Li, L.-J., Shamma, D.A. and others</td>
+	<td>Visual genome: Connecting language and vision using crowdsourced dense image annotations <p class="infolinks">[<a href="javascript:toggleInfo('krishna2017visual','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('krishna2017visual','comment')">Comment</a>] [<a href="javascript:toggleInfo('krishna2017visual','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>International journal of computer vision<br/>Vol. 123(1), pp. 32-73&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://arxiv.org/pdf/1602.07332">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_krishna2017visual" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Despite progress in perceptual tasks such as image classification, computers still perform poorly on cognitive tasks such as image description and question answering. Cognition is core to tasks that involve not just recognizing, but reasoning about our visual world. However, models used to tackle the rich content in images for cognitive tasks are still being trained using the same datasets designed for perceptual tasks. To achieve success at cognitive tasks, models need to understand the interactions and relationships between objects in an image. When asked "What vehicle is the person riding?", computers will need to identify the objects in an image as well as the relationships riding(man, carriage) and pulling(horse, carriage) in order to answer correctly that "the person is riding a horse-drawn carriage".<br>In this paper, we present the Visual Genome dataset to enable the modeling of such relationships. We collect dense annotations of objects, attributes, and relationships within each image to learn these models. Specifically, our dataset contains over 100K images where each image has an average of 21 objects, 18 attributes, and 18 pairwise relationships between objects. We canonicalize the objects, attributes, relationships, and noun phrases in region descriptions and questions answer pairs to WordNet synsets. Together, these annotations represent the densest and largest dataset of image descriptions, objects, attributes, relationships, and question answers.</td>
+</tr>
+<tr id="rev_krishna2017visual" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Visual genome dataset. Citations - 1355</td>
+</tr>
+<tr id="bib_krishna2017visual" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{krishna2017visual,
+  author = {Krishna, Ranjay and Zhu, Yuke and Groth, Oliver and Johnson, Justin and Hata, Kenji and Kravitz, Joshua and Chen, Stephanie and Kalantidis, Yannis and Li, Li-Jia and Shamma, David A and others},
+  title = {Visual genome: Connecting language and vision using crowdsourced dense image annotations},
+  journal = {International journal of computer vision},
+  publisher = {Springer},
+  year = {2017},
+  volume = {123},
+  number = {1},
+  pages = {32--73},
+  url = {https://arxiv.org/pdf/1602.07332}
+}
+</pre></td>
+</tr>
+<tr id="lafferty2001conditional" class="entry">
+	<td>Lafferty, J., McCallum, A. and Pereira, F.C.</td>
+	<td>Conditional random fields: Probabilistic models for segmenting and labeling sequence data <p class="infolinks">[<a href="javascript:toggleInfo('lafferty2001conditional','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('lafferty2001conditional','comment')">Comment</a>] [<a href="javascript:toggleInfo('lafferty2001conditional','bibtex')">BibTeX</a>]</p></td>
+	<td>2001</td>
+	<td>&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://repository.upenn.edu/cgi/viewcontent.cgi?article=1162&context=cis_papers">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_lafferty2001conditional" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present conditional random fields, a framework for building probabilistic models to segment and label sequence data. Conditional random fields offer several advantages over hidden Markov models and stochastic grammars for such tasks, including the ability to relax strong independence assumptions made in those models. Conditional random fields also avoid a fundamental limitation of maximum entropy Markov models (MEMMs) and other discriminative Markov models based on directed graphical models, which can be biased towards states with few successor states. We present iterative parameter estimation algorithms for conditional random fields and compare the performance of the resulting models to HMMs and MEMMs on synthetic and natural-language data.</td>
+</tr>
+<tr id="rev_lafferty2001conditional" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: CRF. Citations - 14250</td>
+</tr>
+<tr id="bib_lafferty2001conditional" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{lafferty2001conditional,
+  author = {Lafferty, John and McCallum, Andrew and Pereira, Fernando CN},
+  title = {Conditional random fields: Probabilistic models for segmenting and labeling sequence data},
+  year = {2001},
+  url = {https://repository.upenn.edu/cgi/viewcontent.cgi?article=1162&amp;context=cis_papers}
+}
+</pre></td>
+</tr>
+<tr id="lin2014microsoft" class="entry">
+	<td>Lin, T.-Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan, D., Doll&aacute;r, P. and Zitnick, C.L.</td>
+	<td>Microsoft coco: Common objects in context <p class="infolinks">[<a href="javascript:toggleInfo('lin2014microsoft','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('lin2014microsoft','comment')">Comment</a>] [<a href="javascript:toggleInfo('lin2014microsoft','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>European conference on computer vision, pp. 740-755&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://link.springer.com/content/pdf/10.1007/978-3-319-10602-1_48.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_lin2014microsoft" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a new dataset with the goal of advancing the state-of-the-art in object recognition by placing the question of object recognition in the context of the broader question of scene understanding. This is achieved by gathering images of complex everyday scenes containing common objects in their natural context. Objects are labeled using per-instance segmentations to aid in precise object localization. Our dataset contains photos of 91 objects types that would be easily recognizable by a 4 year old. With a total of 2.5 million labeled instances in 328k images, the creation of our dataset drew upon extensive crowd worker involvement via novel user interfaces for category detection, instance spotting and instance segmentation. We present a detailed<br>statistical analysis of the dataset in comparison to PASCAL, ImageNet, and SUN. Finally, we provide baseline performance analysis for bounding box and segmentation detection results using a Deformable Parts Model.</td>
+</tr>
+<tr id="rev_lin2014microsoft" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: COCO dataset. CItations - 10987</td>
+</tr>
+<tr id="bib_lin2014microsoft" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{lin2014microsoft,
+  author = {Lin, Tsung-Yi and Maire, Michael and Belongie, Serge and Hays, James and Perona, Pietro and Ramanan, Deva and Doll&aacute;r, Piotr and Zitnick, C Lawrence},
+  title = {Microsoft coco: Common objects in context},
+  booktitle = {European conference on computer vision},
+  year = {2014},
+  pages = {740--755},
+  url = {https://link.springer.com/content/pdf/10.1007/978-3-319-10602-1_48.pdf}
+}
+</pre></td>
+</tr>
+<tr id="liu2016ssd" class="entry">
+	<td>Liu, W., Anguelov, D., Erhan, D., Szegedy, C., Reed, S., Fu, C.-Y. and Berg, A.C.</td>
+	<td>Ssd: Single shot multibox detector <p class="infolinks">[<a href="javascript:toggleInfo('liu2016ssd','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('liu2016ssd','comment')">Comment</a>] [<a href="javascript:toggleInfo('liu2016ssd','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>European conference on computer vision, pp. 21-37&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://arxiv.org/pdf/1512.02325.pdf%EF%BC%89">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_liu2016ssd" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a method for detecting objects in images using a single deep neural network. Our approach, named SSD, discretizes the output space of bounding boxes into a set of default boxes over different aspect ratios and scales per feature map location. At prediction time, the network generates scores for the presence of each object category in each default box and produces adjustments to the box to better match the object shape. Additionally, the network combines predictions from multiple feature maps with different resolutions to naturally handle objects of various sizes. SSD is simple relative to methods that require object proposals because it completely eliminates proposal generation and subsequent pixel or feature resampling stages and encapsulates all computation in a single network. This makes SSD easy to train and straightforward to integrate into systems that require a detection component. Experimental results on the PASCAL VOC, COCO, and ILSVRC datasets confirm that SSD has competitive accuracy to methods that utilize an additional object proposal step and is much faster, while providing a unified framework for both training and inference. For   300×300  input, SSD achieves 74.3 % mAP on VOC2007 test at 59 FPS on a Nvidia Titan X and for   512×512  input, SSD achieves 76.9 % mAP, outperforming a comparable state of the art Faster R-CNN model. Compared to other single stage methods, SSD has much better accuracy even with a smaller input image size. Code is available at https://github.com/weiliu89/caffe/tree/ssd.</td>
+</tr>
+<tr id="rev_liu2016ssd" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: SSD. Citations - 9937</td>
+</tr>
+<tr id="bib_liu2016ssd" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{liu2016ssd,
+  author = {Liu, Wei and Anguelov, Dragomir and Erhan, Dumitru and Szegedy, Christian and Reed, Scott and Fu, Cheng-Yang and Berg, Alexander C},
+  title = {Ssd: Single shot multibox detector},
+  booktitle = {European conference on computer vision},
+  year = {2016},
+  pages = {21--37},
+  url = {https://arxiv.org/pdf/1512.02325.pdf%EF%BC%89}
+}
+</pre></td>
+</tr>
+<tr id="lowe1999object" class="entry">
+	<td>Lowe, D.G.</td>
+	<td>Object recognition from local scale-invariant features <p class="infolinks">[<a href="javascript:toggleInfo('lowe1999object','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('lowe1999object','comment')">Comment</a>] [<a href="javascript:toggleInfo('lowe1999object','bibtex')">BibTeX</a>]</p></td>
+	<td>1999</td>
+	<td><br/>Vol. 2Proceedings of the seventh IEEE international conference on computer vision, pp. 1150-1157&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://home.cis.rit.edu/~cnspci/references/dip/feature_extraction/lowe1999.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_lowe1999object" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: An object recognition system has been developed that uses a new class of local image features. The features are invariant to image scaling, translation, and rotation, and partially invariant to illumination changes and affine or 3D projection. These features share similar properties with neurons in inferior temporal cortex that are used for object recognition in primate vision. Features are efficiently detected through a staged filtering approach that identifies stable points in scale space. Image keys are created that allow for local geometric deformations by representing blurred image gradients in multiple orientation planes and at multiple scales. The keys are used as input to a nearest-neighbor indexing method that identifies candidate object matches. Final verification of each match is achieved by finding a low-residual least-squares solution for the unknown model parameters. Experimental results show that robust object recognition can be achieved in cluttered partially-occluded images with a computation time of under 2 seconds.</td>
+</tr>
+<tr id="rev_lowe1999object" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: SIFT. Citations - 19531</td>
+</tr>
+<tr id="bib_lowe1999object" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{lowe1999object,
+  author = {Lowe, David G},
+  title = {Object recognition from local scale-invariant features},
+  booktitle = {Proceedings of the seventh IEEE international conference on computer vision},
+  year = {1999},
+  volume = {2},
+  pages = {1150--1157},
+  url = {https://home.cis.rit.edu/&nbsp;cnspci/references/dip/feature_extraction/lowe1999.pdf}
+}
+</pre></td>
+</tr>
+<tr id="redmon2016you" class="entry">
+	<td>Redmon, J., Divvala, S., Girshick, R. and Farhadi, A.</td>
+	<td>You only look once: Unified, real-time object detection <p class="infolinks">[<a href="javascript:toggleInfo('redmon2016you','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('redmon2016you','comment')">Comment</a>] [<a href="javascript:toggleInfo('redmon2016you','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 779-788&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Redmon_You_Only_Look_CVPR_2016_paper.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_redmon2016you" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present YOLO, a new approach to object detection. Prior work on object detection repurposes classifiers to perform detection. Instead, we frame object detection as a regression problem to spatially separated bounding boxes and associated class probabilities. A single neural network predicts bounding boxes and class probabilities directly from full images in one evaluation. Since the whole detection pipeline is a single network, it can be optimized end-to-end directly on detection performance. Our unified architecture is extremely fast. Our base YOLO model processes images in real-time at 45 frames per second. A smaller version of the network, Fast YOLO, processes an astounding 155 frames per second while still achieving double the mAP of other real-time detectors. Compared to state-of-the-art detection systems, YOLO makes more localization errors but is less likely to predict false positives on background. Finally, YOLO learns very general representations of objects. It outperforms other detection methods, including DPM and R-CNN, when generalizing from natural images to other domains like artwork.</td>
+</tr>
+<tr id="rev_redmon2016you" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: YOLO. CItations - 10673</td>
+</tr>
+<tr id="bib_redmon2016you" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{redmon2016you,
+  author = {Redmon, Joseph and Divvala, Santosh and Girshick, Ross and Farhadi, Ali},
+  title = {You only look once: Unified, real-time object detection},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  year = {2016},
+  pages = {779--788},
+  url = {https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Redmon_You_Only_Look_CVPR_2016_paper.pdf}
+}
+</pre></td>
+</tr>
+<tr id="ronneberger2015u" class="entry">
+	<td>Ronneberger, O., Fischer, P. and Brox, T.</td>
+	<td>U-net: Convolutional networks for biomedical image segmentation <p class="infolinks">[<a href="javascript:toggleInfo('ronneberger2015u','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('ronneberger2015u','comment')">Comment</a>] [<a href="javascript:toggleInfo('ronneberger2015u','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>International Conference on Medical image computing and computer-assisted intervention, pp. 234-241&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://arxiv.org/pdf/1505.04597.pdf)%E5%92%8C[Tiramisu](https://arxiv.org/abs/1611.09326">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_ronneberger2015u" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: There is large consent that successful training of deep networks requires many thousand annotated training samples. In this paper, we present a network and training strategy that relies on the strong use of data augmentation to use the available annotated samples more efficiently. The architecture consists of a contracting path to capture context and a symmetric expanding path that enables precise localization. We show that such a network can be trained end-to-end from very few images and outperforms the prior best method (a sliding-window convolutional network) on the ISBI challenge for segmentation of neuronal structures in electron microscopic stacks. Using the same network trained on transmitted light microscopy images (phase contrast and DIC) we won the ISBI cell tracking challenge 2015 in these categories by a large margin. Moreover, the network is fast. Segmentation of a 512x512 image takes less than a second on a recent GPU. The full implementation (based on Caffe) and the trained networks are available at http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net .</td>
+</tr>
+<tr id="rev_ronneberger2015u" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: U-net. Citations - 16950</td>
+</tr>
+<tr id="bib_ronneberger2015u" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{ronneberger2015u,
+  author = {Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
+  title = {U-net: Convolutional networks for biomedical image segmentation},
+  booktitle = {International Conference on Medical image computing and computer-assisted intervention},
+  year = {2015},
+  pages = {234--241},
+  url = {https://arxiv.org/pdf/1505.04597.pdf)%E5%92%8C[Tiramisu](https://arxiv.org/abs/1611.09326}
+}
+</pre></td>
+</tr>
+<tr id="shi2000normalized" class="entry">
+	<td>Shi, J. and Malik, J.</td>
+	<td>Normalized cuts and image segmentation <p class="infolinks">[<a href="javascript:toggleInfo('shi2000normalized','comment')">Comment</a>] [<a href="javascript:toggleInfo('shi2000normalized','bibtex')">BibTeX</a>]</p></td>
+	<td>2000</td>
+	<td>IEEE Transactions on pattern analysis and machine intelligence<br/>Vol. 22(8), pp. 888-905&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://repository.upenn.edu/cgi/viewcontent.cgi?article=1101&context=cis_papers">URL</a>&nbsp;</td>
+</tr>
+<tr id="rev_shi2000normalized" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Normalized cuts and image segmentations. Citation - 16295</td>
+</tr>
+<tr id="bib_shi2000normalized" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{shi2000normalized,
+  author = {Shi, Jianbo and Malik, Jitendra},
+  title = {Normalized cuts and image segmentation},
+  journal = {IEEE Transactions on pattern analysis and machine intelligence},
+  publisher = {Ieee},
+  year = {2000},
+  volume = {22},
+  number = {8},
+  pages = {888--905},
+  url = {https://repository.upenn.edu/cgi/viewcontent.cgi?article=1101&amp;context=cis_papers}
+}
+</pre></td>
+</tr>
+<tr id="szegedy2013intriguing" class="entry">
+	<td>Szegedy, C., Zaremba, W., Sutskever, I., Bruna, J., Erhan, D., Goodfellow, I. and Fergus, R.</td>
+	<td>Intriguing properties of neural networks <p class="infolinks">[<a href="javascript:toggleInfo('szegedy2013intriguing','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('szegedy2013intriguing','comment')">Comment</a>] [<a href="javascript:toggleInfo('szegedy2013intriguing','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>arXiv preprint arXiv:1312.6199&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://arxiv.org/pdf/1312.6199.pdf?source=post_page---------------------------">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_szegedy2013intriguing" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Deep neural networks are highly expressive models that have recently achieved state of the art performance on speech and visual recognition tasks. While their expressiveness is the reason they succeed, it also causes them to learn uninterpretable solutions that could have counter-intuitive properties. In this paper we report two such properties. First, we find that there is no distinction between individual high level units and random linear combinations of high level units, according to various methods of unit analysis. It suggests that it is the space, rather than the individual units, that contains the semantic information in the high layers of neural networks. Second, we find that deep neural networks learn input-output mappings that are fairly discontinuous to a significant extent. We can cause the network to misclassify an image by applying a certain hardly perceptible perturbation, which is found by maximizing the network’s prediction error. In addition, the specific nature of these perturbations is not a random artifact of learning: the same perturbation can cause a different network, that was trained on a different subset of the dataset, to misclassify the same input.</td>
+</tr>
+<tr id="rev_szegedy2013intriguing" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Properties of neural net. Citations - 5096</td>
+</tr>
+<tr id="bib_szegedy2013intriguing" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{szegedy2013intriguing,
+  author = {Szegedy, Christian and Zaremba, Wojciech and Sutskever, Ilya and Bruna, Joan and Erhan, Dumitru and Goodfellow, Ian and Fergus, Rob},
+  title = {Intriguing properties of neural networks},
+  journal = {arXiv preprint arXiv:1312.6199},
+  year = {2013},
+  url = {https://arxiv.org/pdf/1312.6199.pdf?source=post_page---------------------------}
+}
+</pre></td>
+</tr>
+<tr id="szegedy2015going" class="entry">
+	<td>Szegedy, C., Liu, W., Jia, Y., Sermanet, P., Reed, S., Anguelov, D., Erhan, D., Vanhoucke, V. and Rabinovich, A.</td>
+	<td>Going deeper with convolutions <p class="infolinks">[<a href="javascript:toggleInfo('szegedy2015going','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 1-9&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="bib_szegedy2015going" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{szegedy2015going,
+  author = {Szegedy, Christian and Liu, Wei and Jia, Yangqing and Sermanet, Pierre and Reed, Scott and Anguelov, Dragomir and Erhan, Dumitru and Vanhoucke, Vincent and Rabinovich, Andrew},
+  title = {Going deeper with convolutions},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  year = {2015},
+  pages = {1--9}
+}
+</pre></td>
+</tr>
+<tr id="turk1991eigenfaces" class="entry">
+	<td>Turk, M. and Pentland, A.</td>
+	<td>Eigenfaces for recognition <p class="infolinks">[<a href="javascript:toggleInfo('turk1991eigenfaces','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('turk1991eigenfaces','comment')">Comment</a>] [<a href="javascript:toggleInfo('turk1991eigenfaces','bibtex')">BibTeX</a>]</p></td>
+	<td>1991</td>
+	<td>Journal of cognitive neuroscience<br/>Vol. 3(1), pp. 71-86&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://www.mitpressjournals.org/doi/pdfplus/10.1162/jocn.1991.3.1.71">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_turk1991eigenfaces" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We have developed a near-real-time computer system that can locate and track a subject’s head, and then recognize the person by comparing characteristics of the face to those of known individuals. The computational approach taken in this system is motivated by both physiology and information theory, as well as by the practical requirements of near-real-time performance and accuracy. Our approach treats the face recognition problem as an intrinsically two-dimensional (2-D) recognition problem rather than requiring recovery of threedimensional geometry, taking advantage of the fact that faces are normally upright and thus may be described by a small set of 2-D characteristic views. The system functions by projecting face images onto a feature space that spans the significant variations among known face images. The significant features are known as “eigenfaces,” because they are the eigenvectors (principal components) of the set of faces; they do not necessarily correspond to features such as eyes, ears, and noses. The projection operation characterizes an individual face by a weighted sum of the eigenface features, and so to recognize a particular face it is necessary only to compare these weights to those of known individuals. Some particular advantages of our approach are that it provides for the ability to learn and later recognize new faces in an unsupervised manner, and that it is easy to implement using a neural network architecture.</td>
+</tr>
+<tr id="rev_turk1991eigenfaces" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: Eigenfaces. Citations - 18834</td>
+</tr>
+<tr id="bib_turk1991eigenfaces" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{turk1991eigenfaces,
+  author = {Turk, Matthew and Pentland, Alex},
+  title = {Eigenfaces for recognition},
+  journal = {Journal of cognitive neuroscience},
+  publisher = {MIT Press},
+  year = {1991},
+  volume = {3},
+  number = {1},
+  pages = {71--86},
+  url = {https://www.mitpressjournals.org/doi/pdfplus/10.1162/jocn.1991.3.1.71}
+}
+</pre></td>
+</tr>
+<tr id="xiang2014beyond" class="entry">
+	<td>Xiang, Y., Mottaghi, R. and Savarese, S.</td>
+	<td>Beyond pascal: A benchmark for 3d object detection in the wild <p class="infolinks">[<a href="javascript:toggleInfo('xiang2014beyond','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('xiang2014beyond','comment')">Comment</a>] [<a href="javascript:toggleInfo('xiang2014beyond','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>IEEE winter conference on applications of computer vision, pp. 75-82&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://cvgl.stanford.edu/papers/xiang_wacv14.pdf">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_xiang2014beyond" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: 3D object detection and pose estimation methods have become popular in recent years since they can handle ambiguities in 2D images and also provide a richer description for objects compared to 2D object detectors. However, most of the datasets for 3D recognition are limited to a small amount of images per category or are captured in controlled environments. In this paper, we contribute PASCAL3D+ dataset, which is a novel and challenging dataset for 3D object detection and pose estimation. PASCAL3D+<br>augments 12 rigid categories of the PASCAL VOC 2012 [4] with 3D annotations. Furthermore, more images are added for each category from ImageNet [3]. PASCAL3D+ images exhibit much more variability compared to the existing 3D datasets, and on average there are more than 3,000 object instances per category. We believe this dataset will provide a rich testbed to study 3D detection and pose estimation and will help to significantly push forward research in this area. We provide the results of variations of DPM [6] on our new dataset for object detection and viewpoint estimation in different scenarios, which can be used as baselines for the community. Our benchmark is available online at http://cvgl.stanford.edu/projects/pascal3d</td>
+</tr>
+<tr id="rev_xiang2014beyond" class="comment noshow">
+	<td colspan="6"><b>Comment</b>: PASCAL VOC. Citations - 478</td>
+</tr>
+<tr id="bib_xiang2014beyond" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{xiang2014beyond,
+  author = {Xiang, Yu and Mottaghi, Roozbeh and Savarese, Silvio},
+  title = {Beyond pascal: A benchmark for 3d object detection in the wild},
+  booktitle = {IEEE winter conference on applications of computer vision},
+  year = {2014},
+  pages = {75--82},
+  url = {https://cvgl.stanford.edu/papers/xiang_wacv14.pdf}
+}
+</pre></td>
+</tr>
+<tr id="" class="entry">
+	<td></td>
+	<td> <p class="infolinks">[<a href="javascript:toggleInfo('','bibtex')">BibTeX</a>]</p></td>
+	<td></td>
+	<td>&nbsp;</td>
+	<td>article</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="bib_" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{,
+}
+</pre></td>
+</tr>
+</tbody>
+</table>
+<footer>
+ <small>Created by Manojkl <a href="http://jabref.sourceforge.net">JabRef</a> on 26/08/2020.</small>
+</footer>
+<!-- file generated by JabRef -->
+</body>
+</html>
