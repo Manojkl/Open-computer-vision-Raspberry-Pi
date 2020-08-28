@@ -1,1 +1,1 @@
-# Open-computer-vision-Raspberry-Pi-
+# Open-computer-vision-Raspberry-Pi
