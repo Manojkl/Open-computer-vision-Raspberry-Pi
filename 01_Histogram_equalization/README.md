@@ -2,7 +2,7 @@
 
 Histogram equalization is a process for adjusting the image intensities to enhance the contrast.
 
-![alt text](https://en.wikipedia.org/wiki/File:Histogrammeinebnung.png) <br>
+![alt text](https://upload.wikimedia.org/wikipedia/commons/c/ca/Histogrammeinebnung.png) <br>
 
 For more detail on histogram equalization please visit the below site.
 
